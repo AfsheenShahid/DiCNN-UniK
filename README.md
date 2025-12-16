@@ -21,7 +21,6 @@ We developed this Dual-Input CNN (DiCNN) to overcome the major limitations of tr
 ...
 ## ⚙️ Getting Started
 
-### 1. Data Preparation (Handling Large Genomic Files)
 
 The primary training dataset (`Flavi_training_data.csv`) is too large for GitHub and is hosted externally on Google Drive.
 
