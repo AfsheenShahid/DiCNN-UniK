@@ -19,3 +19,36 @@ We developed this Dual-Input CNN (DiCNN) to overcome the major limitations of tr
 
 ---
 ...
+## ⚙️ Getting Started
+
+### 1. Data Preparation (Handling Large Genomic Files)
+
+The primary training dataset (`Flavi_training_data.csv`) is too large for GitHub and is hosted externally on Google Drive.
+
+1.  **Download the Training Data:**
+    Please click the direct link below to download the primary training dataset:
+    
+    [**DOWNLOAD: Flavi_training_data.csv (Google Drive)**](https://drive.google.com/uc?export=download&id=1tZRuUj9Nb8UDvuUczvxMUnK9irGo9PJ8)
+    
+    > **Note:** This link is configured to initiate a direct download and bypass the Google Drive preview.
+
+2.  **Place the Data:**
+    After downloading, you **must** place the `Flavi_training_data.csv` file inside a new folder named `data/` in the root of this repository.
+
+    Your repository structure should look like this:
+
+    ```
+    .
+    ├── data/
+    │   └── Flavi_training_data.csv  <-- Place the downloaded file here
+    ├── model_architecture.py
+    ├── train_and_evaluate.py
+    └── README.md
+    ```
+
+3.  **Run Training:**
+    Once the data is in place, you can proceed with installation and training using the command line arguments:
+
+    ```bash
+    python train_and_evaluate.py --data_path data/Flavi_training_data.csv
+    ```
