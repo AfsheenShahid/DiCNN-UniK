@@ -106,7 +106,7 @@ else:
 
     # External validation files
     ext_files = ['flavi_raw_test_70_90.csv', 'flavi_raw_test_50_70.csv', 'flavi_raw_test_20_50.csv']
-    max_seq_len = 14310 #Must match training
+    max_seq_len = 11565 #Must match training
 
     # --- Model Size Calculation ---
     # Calculate the number of trainable parameters
