@@ -1,102 +1,112 @@
 import tensorflow as tf
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input, Embedding, Conv1D, GlobalMaxPooling1D, Dense, concatenate, Dropout
+from tensorflow.keras.utils import model_to_dot
+import pydot
+import os
 
-def build_multi_kmer_cnn(kmer_data_config, num_classes, embedding_dim=128, filters_per_conv=256, kernel_sizes_conv=[3, 5]):
-    """
-    Builds a Multi-Kmer Input CNN model based on the provided k-mer configurations.
+# Updated Parameters ---
+num_classes = 10
+embedding_dim = 128
+filters_per_conv = 256
+kernel_sizes_conv = [3, 5]
 
-    Args:
-        kmer_data_config (dict): A dictionary where keys are k-mer sizes (e.g., 5, 6) 
-                                 and values are dictionaries containing 'vocab_size' 
-                                 and 'max_len' for that k-mer.
-        num_classes (int): The number of output classes.
-        embedding_dim (int): The dimension of the k-mer embedding space.
-        filters_per_conv (int): Number of filters for each Conv1D layer.
-        kernel_sizes_conv (list): List of kernel sizes for the Conv1D layers.
+# New Derived Parameters
+kmer_config = {
+    5: {
+        'vocab_size': 1025,   # Derived from Param count (131200 / 128)
+        'max_len': 11560      # Matches input_k5 Output Shape
+    },
+    6: {
+        'vocab_size': 4097,   # Derived from Param count (524416 / 128)
+        'max_len': 11559      # Matches input_k6 Output Shape
+    }
+}
 
-    Returns:
-        tf.keras.Model: The compiled multi-input CNN model.
-    """
-    
-    #  
-    # This architecture uses multiple parallel branches (one for each k-mer size)
-    # before merging and classification, similar to the abstract's DiCNN concept.
-    
+def build_model(kmer_config, k_sizes, num_classes, embedding_dim, filters_per_conv, kernel_sizes_conv):
+    """Builds the updated DiCNN-UniK architecture."""
     input_branches = []
     pooled_features = []
 
-    # ------------------ K-mer Specific Branches ------------------
-    for k_size, config in kmer_data_config.items():
-        k = k_size
-        max_len = config['max_len']
-        vocab_size = config['vocab_size']
-        
-        # 1. Input Layer
-        input_layer = Input(shape=(max_len,), name=f'input_k{k}')
+    for k in k_sizes:
+        max_kmer_len = kmer_config[k]['max_len']
+        vocab_size = kmer_config[k]['vocab_size']
+
+        input_layer = Input(shape=(max_kmer_len,), name=f'input_k{k}')
         input_branches.append(input_layer)
 
-        # 2. Embedding Layer
         embedding_layer = Embedding(
             input_dim=vocab_size,
             output_dim=embedding_dim,
-            input_length=max_len,
-            name=f'embedding_k{k}'
+            name=f'embedding_{k}' if k == 6 else 'embedding' # Matches your table names
         )(input_layer)
 
-        # 3. Parallel 1D Convolutional Layers (for different kernel sizes)
         conv_outputs = []
-        for kernel_size in kernel_sizes_conv:
+        for i, kernel_size in enumerate(kernel_sizes_conv):
+            # Naming conv layers to match: conv1d, conv1d_1, conv1d_2, conv1d_3
+            suffix = f"_{len(pooled_features)*2 + i}" if (len(pooled_features)*2 + i) > 0 else ""
             conv = Conv1D(
-                filters=filters_per_conv, 
-                kernel_size=kernel_size, 
+                filters=filters_per_conv,
+                kernel_size=kernel_size,
                 activation='relu',
-                name=f'conv1d_k{k}_ks{kernel_size}'
+                name=f'conv1d{suffix}'
             )(embedding_layer)
-            
-            # GlobalMaxPooling1D pools features across the entire sequence length
-            conv_outputs.append(GlobalMaxPooling1D()(conv))
 
-        # 4. Merge Convolutional Features (if multiple kernels are used)
-        if len(conv_outputs) > 1:
-            merged_conv = concatenate(conv_outputs, name=f'merged_conv_k{k}')
-        else:
-            merged_conv = conv_outputs[0]
+            pool = GlobalMaxPooling1D(name=f'global_max_pooling1d{suffix}')(conv)
+            conv_outputs.append(pool)
 
+        merged_conv = concatenate(conv_outputs, name=f'merged_conv_k{k}')
         pooled_features.append(merged_conv)
 
-    # ------------------ Global Merging and Classification Head ------------------
-    if len(pooled_features) > 1:
-        all_features_merged = concatenate(pooled_features, name='all_kmer_features_merged')
-    else:
-        all_features_merged = pooled_features[0]
+    all_features_merged = concatenate(pooled_features, name='all_kmer_features_merged')
 
-    # Classification Head (Dense Layers with Dropout)
-    dense_layer_1 = Dense(512, activation='relu')(all_features_merged)
-    dropout_layer_1 = Dropout(0.5)(dense_layer_1)
+    x = Dense(512, activation='relu', name='dense')(all_features_merged)
+    x = Dropout(0.5, name='dropout')(x)
+    x = Dense(256, activation='relu', name='dense_1')(x)
+    x = Dropout(0.5, name='dropout_1')(x)
 
-    dense_layer_2 = Dense(256, activation='relu')(dropout_layer_1)
-    dropout_layer_2 = Dropout(0.5)(dense_layer_2)
+    output_layer = Dense(num_classes, activation='softmax', name='output_classification')(x)
 
-    output_layer = Dense(num_classes, activation='softmax', name='output_classification')(dropout_layer_2)
-
-    # Final Model Definition
-    model = Model(inputs=input_branches, outputs=output_layer, name='DNA_Kmer_Flavivirus_Classifier')
-
+    model = Model(inputs=input_branches, outputs=output_layer, name='DiCNN_UniK_Updated')
     return model
 
-if __name__ == '__main__':
-    # This block is for testing the model architecture independently
-    print("Testing model build function with dummy data...")
-    
-    # Dummy configuration
-    dummy_config = {
-        5: {'vocab_size': 10000, 'max_len': 500},
-        6: {'vocab_size': 40000, 'max_len': 499}
-    }
-    dummy_num_classes = 10
+def plot_model_with_custom_style(model, file_name, node_color='lightgray', font_size='20'):
+    """
+    Saves model plot with custom colors AND increased font size.
+    """
+    try:
+        dot = model_to_dot(
+            model,
+            show_shapes=True,
+            show_layer_names=True,
+            rankdir='TB',
+            dpi=300 # Higher resolution
+        )
 
-    test_model = build_multi_kmer_cnn(dummy_config, dummy_num_classes)
-    test_model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
-    test_model.summary()
-    print("Model built successfully.")
+        # Update Node styles
+        for node in dot.get_nodes():
+            node.set('fillcolor', node_color)
+            node.set('style', 'filled')
+            node.set('fontsize', font_size) # <--- INCREASES FONT SIZE
+            node.set('fontname', 'Arial Bold')
+
+        # Save files
+        if file_name.endswith('.pdf'): dot.write_pdf(file_name)
+        elif file_name.endswith('.png'): dot.write_png(file_name)
+        elif file_name.endswith('.eps'): dot.write_postscript(file_name)
+
+        print(f"✅ Saved architecture to: {file_name} (Font Size: {font_size})")
+
+    except Exception as e:
+        print(f"⚠️ Visualization failed: {e}")
+
+# Execution ---
+if __name__ == '__main__':
+    model = build_model(kmer_config, [5, 6], num_classes, embedding_dim, filters_per_conv, kernel_sizes_conv)
+
+    # Show summary to verify it matches your table
+    model.summary()
+
+    # Generate the high-visibility plots
+    plot_model_with_custom_style(model, 'DiCNN_architecture_high_res.png', font_size='24')
+    plot_model_with_custom_style(model, 'DiCNN_architecture_high_res.pdf', font_size='24')
